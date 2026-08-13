@@ -1,0 +1,82 @@
+{
+  "entities": {
+    "Student": {
+      "title": "Student",
+      "description": "Student registration data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "registrationNumber": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "Activity": {
+      "title": "Activity",
+      "description": "Activity templates",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title"]
+    },
+    "Submission": {
+      "title": "Submission",
+      "description": "Student submissions for activities",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "activityId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "studentId", "activityId"]
+    },
+    "Setting": {
+      "title": "Setting",
+      "description": "Global settings configuration",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "value": { "type": "string" }
+      },
+      "required": ["id"]
+    },
+    "File": {
+      "title": "File",
+      "description": "Decoupled base64 file payloads",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "base64Data": { "type": "string" }
+      },
+      "required": ["id", "base64Data"]
+    }
+  },
+  "firestore": {
+    "students": {
+      "schema": "Student",
+      "description": "Collection of student profiles"
+    },
+    "activities": {
+      "schema": "Activity",
+      "description": "Collection of learning activities"
+    },
+    "submissions": {
+      "schema": "Submission",
+      "description": "Collection of student submissions"
+    },
+    "settings": {
+      "schema": "Setting",
+      "description": "Global app configurations"
+    },
+    "files": {
+      "schema": "File",
+      "description": "Collection of base64 decoupled files"
+    }
+  }
+}

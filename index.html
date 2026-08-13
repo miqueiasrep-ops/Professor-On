@@ -1,0 +1,124 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Professor Conectado</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+      }
+      /* Custom scrollbar for chat */
+      .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+      }
+      .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+      }
+      
+      /* Sidebar Custom Scrollbar (Light/White for Dark Backgrounds) */
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 8px; /* Aumentado para melhor visibilidade */
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.05); /* Fundo leve para indicar a trilha */
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background-color: rgba(255, 255, 255, 0.5); /* Opacidade muito maior (0.5 vs 0.1) */
+        border-radius: 20px;
+        border: 2px solid rgba(30, 41, 59, 1); /* Borda da cor do fundo para criar efeito de espaçamento */
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background-color: rgba(255, 255, 255, 0.8); /* Quase branco ao passar o mouse */
+      }
+
+      /* Modal Custom Scrollbar (Dark/Zinc for White Backgrounds) */
+      .scrollbar-zinc::-webkit-scrollbar {
+        width: 6px;
+      }
+      .scrollbar-zinc::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .scrollbar-zinc::-webkit-scrollbar-thumb {
+        background-color: #cbd5e1; /* slate-300 */
+        border-radius: 20px;
+      }
+      .scrollbar-zinc::-webkit-scrollbar-thumb:hover {
+        background-color: #94a3b8; /* slate-400 */
+      }
+
+      /* Animations */
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-fade-in {
+        animation: fadeIn 0.5s ease-out forwards;
+      }
+
+      /* Print Styles for PDF Generation (Fallback) */
+      @media print {
+        @page {
+          margin: 2cm;
+          size: auto;
+        }
+        body {
+          background-color: white !important;
+          color: black !important;
+        }
+        /* Hide UI elements */
+        aside, .no-print, header {
+          display: none !important;
+        }
+        /* Reset Layout */
+        main {
+          margin-left: 0 !important;
+          padding: 0 !important;
+          width: 100% !important;
+          max-width: none !important;
+          overflow: visible !important;
+        }
+        /* Ensure containers are visible and clean */
+        #root, .h-full {
+          height: auto !important;
+          overflow: visible !important;
+        }
+        /* Remove shadows and rounded corners for paper */
+        .shadow-sm, .shadow-md, .shadow-xl {
+          box-shadow: none !important;
+        }
+        .rounded-xl, .rounded-lg {
+          border-radius: 0 !important;
+        }
+        /* Ensure borders are visible for readability */
+        .border {
+          border-color: #e5e7eb !important;
+        }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
+    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
+    "react-qr-code": "https://aistudiocdn.com/react-qr-code@^2.0.18"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-gray-50 text-gray-900">
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

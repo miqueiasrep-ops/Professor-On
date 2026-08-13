@@ -1,0 +1,8 @@
+{
+  "name": "Professor Conectado",
+  "description": "Uma suíte completa para professores: pesquisa avançada, criação de provas com IA e controle de notas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
