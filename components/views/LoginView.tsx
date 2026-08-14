@@ -125,17 +125,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onTeacherLogin, o
     }
   };
 
-  const handleDemoLogin = () => {
-    const demoTeacher: TeacherAccount = {
-      id: 'prof_demo_01',
-      name: 'Prof. Carlos Eduardo',
-      email: 'carlos.eduardo@escola.com',
-      schoolName: 'Colégio Estadual Modelo',
-      createdAt: new Date().toISOString()
-    };
-    onTeacherLogin(demoTeacher);
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4 sm:p-6">
       <div className="bg-white rounded-3xl shadow-2xl overflow-hidden max-w-4xl w-full flex flex-col md:flex-row animate-fade-in border border-slate-700/50">
@@ -262,16 +251,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onTeacherLogin, o
                 >
                   Acessar Meu Painel <ArrowRight size={18} />
                 </button>
-
-                <div className="pt-2 text-center">
-                  <button
-                    type="button"
-                    onClick={handleDemoLogin}
-                    className="text-xs text-indigo-600 hover:text-indigo-800 font-bold underline transition-colors"
-                  >
-                    Entrar como Professor de Demonstração
-                  </button>
-                </div>
               </form>
             )}
 
