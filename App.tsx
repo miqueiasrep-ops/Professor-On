@@ -2,6 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { idbGetItem, idbSetItem } from './components/utils/indexedDB';
+import { 
+  syncStudentToFirestore, 
+  syncStudentsBulkToFirestore, 
+  deleteStudentFromFirestore, 
+  syncActivityToFirestore, 
+  syncSubmissionToFirestore, 
+  subscribeToRealtimeFirestore 
+} from './components/utils/firebaseClient';
 import { Sidebar } from './components/Sidebar';
 import { DashboardView } from './components/views/DashboardView';
 import { ResearchView } from './components/views/ResearchView';
@@ -274,6 +282,68 @@ function App() {
     };
     loadFromIndexedDB();
   }, []);
+
+  // --- REALTIME FIRESTORE LISTENER (Direct Client Cloud Sync for Vercel & Mobile) ---
+  useEffect(() => {
+    if (!isLoadedFromDB) return;
+
+    const unsubscribe = subscribeToRealtimeFirestore({
+      onStudents: (remoteStudents) => {
+        if (Array.isArray(remoteStudents) && remoteStudents.length > 0) {
+          setStudents(prev => {
+            const map = new Map<string, Student>();
+            remoteStudents.forEach(s => {
+              if (s && s.id) map.set(s.id, s);
+            });
+            prev.forEach(s => {
+              if (s && s.id && !map.has(s.id)) {
+                map.set(s.id, s);
+              }
+            });
+            return Array.from(map.values());
+          });
+        }
+      },
+      onActivities: (remoteActivities) => {
+        if (Array.isArray(remoteActivities) && remoteActivities.length > 0) {
+          setActivities(prev => {
+            const map = new Map<string, Activity>();
+            remoteActivities.forEach(a => {
+              if (a && a.id) map.set(a.id, a);
+            });
+            prev.forEach(a => {
+              if (a && a.id && !map.has(a.id)) {
+                map.set(a.id, a);
+              } else if (a && a.id && a.fileData && map.has(a.id) && !map.get(a.id)?.fileData) {
+                map.get(a.id)!.fileData = a.fileData;
+              }
+            });
+            return Array.from(map.values());
+          });
+        }
+      },
+      onSubmissions: (remoteSubmissions) => {
+        if (Array.isArray(remoteSubmissions) && remoteSubmissions.length > 0) {
+          setSubmissions(prev => {
+            const map = new Map<string, Submission>();
+            remoteSubmissions.forEach(s => {
+              if (s && s.id) map.set(s.id, s);
+            });
+            prev.forEach(s => {
+              if (s && s.id && !map.has(s.id)) {
+                map.set(s.id, s);
+              } else if (s && s.id && s.fileData && map.has(s.id) && !map.get(s.id)?.fileData) {
+                map.get(s.id)!.fileData = s.fileData;
+              }
+            });
+            return Array.from(map.values());
+          });
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [isLoadedFromDB]);
 
   // --- SYNC STATE FROM BACKEND WITH POLLING ---
   const [customRegistrationLink, setCustomRegistrationLink] = useState(() => {
@@ -684,6 +754,8 @@ function App() {
     }
 
     setStudents(prev => [...prev, initializedStudent]);
+    // Sync directly to Firestore for real-time update across all devices (notebook, mobile, Vercel)
+    syncStudentToFirestore(initializedStudent);
     try {
       await fetch('/api/students', {
         method: 'POST',
@@ -697,6 +769,7 @@ function App() {
   
   const handleUpdateStudent = async (updatedStudent: Student) => {
       setStudents(prev => prev.map(s => s.id === updatedStudent.id ? updatedStudent : s));
+      syncStudentToFirestore(updatedStudent);
       try {
         await fetch('/api/students', {
           method: 'POST',
@@ -713,6 +786,7 @@ function App() {
           const updateMap = new Map(updatedStudents.map(u => [u.id, u]));
           return prev.map(s => updateMap.has(s.id) ? updateMap.get(s.id)! : s);
       });
+      syncStudentsBulkToFirestore(updatedStudents);
       try {
         await fetch('/api/students/bulk', {
           method: 'POST',
@@ -726,6 +800,7 @@ function App() {
 
   const handleDeleteStudent = async (studentId: string) => {
       setStudents(prev => prev.filter(s => s.id !== studentId));
+      deleteStudentFromFirestore(studentId);
       try {
          await fetch('/api/students/delete', {
            method: 'POST',
@@ -785,6 +860,7 @@ function App() {
   const handleAddActivity = async (activity: Activity) => {
     const activityWithTeacher = { ...activity, teacherId: activity.teacherId || currentTeacher?.id };
     setActivities(prev => [activityWithTeacher, ...prev]);
+    syncActivityToFirestore(activityWithTeacher);
     try {
       await fetch('/api/activities', {
         method: 'POST',
@@ -812,6 +888,7 @@ function App() {
   const handleAddSubmission = async (submission: Submission) => {
     const subWithTeacher = { ...submission, teacherId: submission.teacherId || currentTeacher?.id };
     setSubmissions(prev => [subWithTeacher, ...prev]);
+    syncSubmissionToFirestore(subWithTeacher);
     try {
        await fetch('/api/submissions', {
          method: 'POST',
