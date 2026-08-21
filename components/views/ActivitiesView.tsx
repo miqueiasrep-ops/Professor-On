@@ -1,8 +1,10 @@
 
 import React, { useState, useRef } from 'react';
-import { FolderUp, UploadCloud, File, Download, CheckCircle, Clock, Trash2, Plus, Paperclip, User, FileText, Mail, X, Search, Send, AlertTriangle, Save, Copy } from 'lucide-react';
+import { FolderUp, UploadCloud, File, Download, CheckCircle, Clock, Trash2, Plus, Paperclip, User, FileText, Mail, X, Search, Send, AlertTriangle, Save, Copy, Loader2 } from 'lucide-react';
 import { Activity, Submission, Student } from '../../types';
 import { formatDateBR } from '../utils/dateUtils';
+import { processAndCompressFile } from '../utils/fileUtils';
+import { getFileDataFromFirestore } from '../utils/firebaseClient';
 
 interface ActivitiesViewProps {
   activities: Activity[];
@@ -10,9 +12,10 @@ interface ActivitiesViewProps {
   students: Student[];
   onAddActivity: (activity: Activity) => void;
   onDeleteActivity: (id: string) => void;
+  onDeleteSubmission?: (id: string) => void;
 }
 
-export const ActivitiesView: React.FC<ActivitiesViewProps> = ({ activities, submissions, students, onAddActivity, onDeleteActivity }) => {
+export const ActivitiesView: React.FC<ActivitiesViewProps> = ({ activities, submissions, students, onAddActivity, onDeleteActivity, onDeleteSubmission }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [className, setClassName] = useState('');
@@ -27,37 +30,36 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({ activities, subm
   const [selectedActivityForShare, setSelectedActivityForShare] = useState<Activity | null>(null);
   const [studentSearch, setStudentSearch] = useState('');
 
+  // Submissions search & filter
+  const [submissionSearch, setSubmissionSearch] = useState('');
+  const [selectedActivityFilter, setSelectedActivityFilter] = useState('');
+
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       
-      // Limit file size to 10MB (safe with IndexedDB)
-      if (file.size > 10 * 1024 * 1024) {
-          alert("O arquivo é muito grande (Máx: 10MB). Por favor, escolha um arquivo menor.");
-          e.target.value = ''; // Reset input
+      if (file.size > 15 * 1024 * 1024) {
+          alert("O arquivo é muito grande (Máx: 15MB). Por favor, escolha um arquivo menor.");
+          e.target.value = '';
           return;
       }
 
       setSelectedFile(file);
       setIsReadingFile(true);
 
-      // Convert to Base64
-      const reader = new FileReader();
-      reader.onload = (event) => {
-          if (event.target?.result) {
-              setFileBase64(event.target.result as string);
-              setIsReadingFile(false);
-          }
-      };
-      reader.onerror = () => {
-          alert("Erro ao ler o arquivo.");
-          setIsReadingFile(false);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const result = await processAndCompressFile(file);
+        setFileBase64(result.base64);
+      } catch (err) {
+        console.error("Erro ao processar anexo:", err);
+        alert("Erro ao ler o arquivo selecionado.");
+      } finally {
+        setIsReadingFile(false);
+      }
     }
   };
 
@@ -112,21 +114,28 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({ activities, subm
     }
     setDownloadingId(id);
     try {
+      // 1. Try fetching directly from Firestore (works universally across Vercel, dev & prod)
+      const firestoreData = await getFileDataFromFirestore(id);
+      if (firestoreData) {
+        downloadArchivedFile(firestoreData, fileName);
+        return;
+      }
+
+      // 2. Fallback to API endpoint if available
       const endpoint = type === 'activity' ? `/api/activities/${id}/file` : `/api/submissions/${id}/file`;
       const res = await fetch(endpoint);
       if (res.ok) {
         const data = await res.json();
         if (data.fileData) {
           downloadArchivedFile(data.fileData, fileName);
-        } else {
-          alert("Arquivo não encontrado no servidor.");
+          return;
         }
-      } else {
-        alert("Erro ao baixar o arquivo do servidor.");
       }
+
+      alert("Arquivo não encontrado ou ainda sendo sincronizado na nuvem.");
     } catch (e) {
       console.error(e);
-      alert("Erro de conexão ao baixar o arquivo.");
+      alert("Erro ao baixar o arquivo.");
     } finally {
       setDownloadingId(null);
     }
@@ -368,12 +377,40 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({ activities, subm
 
             {/* Received Submissions (Inbox) */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-               <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-bold text-lg text-gray-800">Entregas dos Alunos</h3>
-                  <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">
-                     {submissions.length} arquivos
+               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+                  <div>
+                    <h3 className="font-bold text-lg text-gray-800">Entregas dos Alunos</h3>
+                    <p className="text-xs text-gray-400">Atividades e arquivos enviados pelos estudantes</p>
+                  </div>
+                  <span className="text-xs font-semibold bg-green-100 text-green-700 px-3 py-1 rounded-full">
+                     {submissions.length} {submissions.length === 1 ? 'arquivo' : 'arquivos'}
                   </span>
                </div>
+
+               {submissions.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+                      <input 
+                        type="text"
+                        value={submissionSearch}
+                        onChange={(e) => setSubmissionSearch(e.target.value)}
+                        placeholder="Buscar aluno ou arquivo..."
+                        className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none"
+                      />
+                    </div>
+                    <select
+                      value={selectedActivityFilter}
+                      onChange={(e) => setSelectedActivityFilter(e.target.value)}
+                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none"
+                    >
+                      <option value="">Todas as Atividades</option>
+                      {activities.map(a => (
+                        <option key={a.id} value={a.id}>{a.title}</option>
+                      ))}
+                    </select>
+                  </div>
+               )}
                
                {submissions.length === 0 ? (
                   <div className="text-center py-12 border-2 border-dashed border-gray-100 rounded-xl">
@@ -385,33 +422,83 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({ activities, subm
                   </div>
                ) : (
                   <div className="space-y-3">
-                     {submissions.map((sub) => (
-                        <div key={sub.id} className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl hover:shadow-md transition-shadow">
-                           <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm">
-                                 {sub.studentName.charAt(0)}
-                              </div>
-                              <div>
-                                 <p className="font-bold text-gray-800 text-sm">{sub.studentName}</p>
-                                 <p className="text-xs text-gray-500 flex items-center gap-1">
-                                    <File size={10} /> {sub.fileName} • {sub.submittedAt}
-                                 </p>
-                              </div>
-                           </div>
-                           
-                           <div className="flex gap-2">
-                              {sub.fileName && (
-                                <button 
-                                    onClick={() => handleDownloadFile(sub.id, 'submission', sub.fileName, sub.fileData)}
-                                    disabled={downloadingId === sub.id}
-                                    className="flex items-center gap-1 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors"
-                                >
-                                    <Download size={14} /> {downloadingId === sub.id ? 'Baixando...' : 'Baixar'}
-                                </button>
-                              )}
-                           </div>
-                        </div>
-                     ))}
+                     {submissions
+                       .filter(sub => {
+                          const matchesSearch = !submissionSearch || 
+                            (sub.studentName && sub.studentName.toLowerCase().includes(submissionSearch.toLowerCase())) ||
+                            (sub.fileName && sub.fileName.toLowerCase().includes(submissionSearch.toLowerCase()));
+                          const matchesActivity = !selectedActivityFilter || sub.activityId === selectedActivityFilter;
+                          return matchesSearch && matchesActivity;
+                       })
+                       .map((sub) => {
+                          const matchedActivity = activities.find(a => a.id === sub.activityId);
+                          const matchedStudent = students.find(s => s.name === sub.studentName);
+
+                          return (
+                            <div key={sub.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white border border-gray-200 rounded-xl hover:shadow-md transition-shadow gap-3">
+                               <div className="flex items-center gap-3.5">
+                                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-sm shadow-indigo-100">
+                                     {sub.studentName ? sub.studentName.charAt(0).toUpperCase() : '?'}
+                                  </div>
+                                  <div>
+                                     <div className="flex items-center gap-2 flex-wrap">
+                                        <p className="font-bold text-gray-800 text-sm">{sub.studentName || 'Aluno'}</p>
+                                        {matchedStudent?.classGroup && (
+                                          <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">
+                                            {matchedStudent.classGroup}
+                                          </span>
+                                        )}
+                                        <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-medium border border-indigo-100">
+                                          {matchedActivity ? matchedActivity.title : 'Atividade'}
+                                        </span>
+                                     </div>
+                                     <p className="text-xs text-gray-500 flex items-center gap-1.5 mt-0.5">
+                                        <File size={11} className="text-indigo-500 shrink-0" />
+                                        <span className="font-medium text-gray-700 truncate max-w-[200px]">{sub.fileName}</span>
+                                        <span className="text-gray-300">•</span>
+                                        <span className="text-gray-400">{sub.submittedAt}</span>
+                                     </p>
+                                  </div>
+                               </div>
+                               
+                               <div className="flex items-center gap-2 self-end sm:self-center">
+                                  {sub.fileName && (
+                                    <button 
+                                        onClick={() => handleDownloadFile(sub.id, 'submission', sub.fileName, sub.fileData)}
+                                        disabled={downloadingId === sub.id}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors cursor-pointer"
+                                        title="Baixar arquivo da entrega"
+                                    >
+                                        {downloadingId === sub.id ? (
+                                          <>
+                                            <Loader2 size={13} className="animate-spin" />
+                                            <span>Baixando...</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Download size={13} />
+                                            <span>Baixar</span>
+                                          </>
+                                        )}
+                                    </button>
+                                  )}
+                                  {onDeleteSubmission && (
+                                    <button
+                                      onClick={() => {
+                                        if (window.confirm(`Deseja remover a entrega de ${sub.studentName}?`)) {
+                                          onDeleteSubmission(sub.id);
+                                        }
+                                      }}
+                                      className="text-gray-400 hover:text-red-500 p-1.5 transition-colors border border-transparent hover:border-red-100 rounded-lg cursor-pointer"
+                                      title="Excluir entrega"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  )}
+                               </div>
+                            </div>
+                          );
+                       })}
                   </div>
                )}
             </div>

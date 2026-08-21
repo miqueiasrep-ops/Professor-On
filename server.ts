@@ -54,6 +54,11 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
+  // Immediate health check endpoint
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", uptime: process.uptime() });
+  });
+
   // In-memory data store with file persistence
   const DATA_FILE = path.join(process.cwd(), "db.json");
   const UPLOADS_DIR = path.join(process.cwd(), "uploads");
@@ -106,31 +111,40 @@ async function startServer() {
     } catch (e) {}
   }
 
+  let isQuotaExceeded = false;
+  let lastQuotaExceededTime = 0;
+
   async function saveUploadedFile(filename: string, base64Data: string) {
     await ensureUploadsDir();
     const filePath = path.join(UPLOADS_DIR, filename + ".dat");
     await fs.writeFile(filePath, base64Data, "utf-8");
 
-    // Persist to Firestore with chunking (to stay well below Firestore 1MB document size limit)
-    if (dbFirestore) {
-      try {
-        const CHUNK_SIZE = 400000; // ~400KB per chunk string
-        const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
+    // Persist to Firestore with chunking in background (non-blocking)
+    if (dbFirestore && !isQuotaExceeded) {
+      (async () => {
+        try {
+          const CHUNK_SIZE = 400000; // ~400KB per chunk string
+          const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
 
-        await setDoc(doc(dbFirestore, "files", filename), { totalChunks, updatedAt: Date.now() });
+          await setDoc(doc(dbFirestore, "files", filename), { totalChunks, updatedAt: Date.now() });
 
-        for (let i = 0; i < totalChunks; i++) {
-          const chunkStr = base64Data.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
-          await setDoc(doc(dbFirestore, "file_chunks", `${filename}_chunk_${i}`), {
-            filename,
-            index: i,
-            chunk: chunkStr
-          });
+          for (let i = 0; i < totalChunks; i++) {
+            const chunkStr = base64Data.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+            await setDoc(doc(dbFirestore, "file_chunks", `${filename}_chunk_${i}`), {
+              filename,
+              index: i,
+              chunk: chunkStr
+            });
+          }
+          console.log(`Saved file ${filename} to Firestore in ${totalChunks} chunk(s).`);
+        } catch (e: any) {
+          if (e?.message?.includes("RESOURCE_EXHAUSTED") || e?.message?.includes("Quota")) {
+            isQuotaExceeded = true;
+            lastQuotaExceededTime = Date.now();
+          }
+          console.error(`Error saving file ${filename} to Firestore:`, e);
         }
-        console.log(`Saved file ${filename} to Firestore in ${totalChunks} chunk(s).`);
-      } catch (e) {
-        console.error(`Error saving file ${filename} to Firestore:`, e);
-      }
+      })().catch(() => {});
     }
   }
 
@@ -182,10 +196,11 @@ async function startServer() {
 
   async function syncFromFirestore() {
     if (!dbFirestore) {
-      console.log("Firestore not initialized, skipping sync.");
       return;
     }
-    console.log("Syncing database with Firestore...");
+    if (isQuotaExceeded && Date.now() - lastQuotaExceededTime < 300000) {
+      return;
+    }
     try {
       // 1. Sync Students
       const studentsSnap = await getDocs(collection(dbFirestore, "students"));
@@ -198,7 +213,6 @@ async function startServer() {
         db.students.forEach(s => { if (s && s.id) studentMap.set(s.id, s); });
         studentsList.forEach(s => { if (s && s.id) studentMap.set(s.id, s); });
         db.students = Array.from(studentMap.values());
-        console.log(`Synced ${studentsList.length} students from Firestore.`);
       }
 
       // 2. Sync Activities
@@ -212,7 +226,6 @@ async function startServer() {
         db.activities.forEach(a => { if (a && a.id) actMap.set(a.id, a); });
         activitiesList.forEach(a => { if (a && a.id) actMap.set(a.id, a); });
         db.activities = Array.from(actMap.values());
-        console.log(`Synced ${activitiesList.length} activities from Firestore.`);
       }
 
       // 3. Sync Submissions
@@ -223,25 +236,33 @@ async function startServer() {
       });
       if (submissionsList.length > 0) {
         const subMap = new Map();
-        db.submissions.forEach(s => { if (s && s.id) subMap.set(s.id, s); });
-        submissionsList.forEach(s => { if (s && s.id) subMap.set(s.id, s); });
+        db.submissions.forEach(s => { if (s && s.id) studentMapSet(subMap, s); });
+        submissionsList.forEach(s => { if (s && s.id) studentMapSet(subMap, s); });
         db.submissions = Array.from(subMap.values());
-        console.log(`Synced ${submissionsList.length} submissions from Firestore.`);
       }
 
       // 4. Sync Custom Registration Link
       const settingsDoc = await getDoc(doc(dbFirestore, "settings", "registration"));
       if (settingsDoc.exists()) {
-        db.customRegistrationLink = settingsDoc.data().customRegistrationLink || "";
-        console.log("Synced custom registration link from Firestore.");
+        db.customRegistrationLink = settingsDoc.data()?.customRegistrationLink || "";
       }
 
       // Save to local db.json
       await saveDb();
-      console.log("Local db.json updated with Firestore data.");
-    } catch (error) {
-      console.error("Error syncing from Firestore:", error);
+      // If we succeeded, clear quota flag
+      isQuotaExceeded = false;
+    } catch (error: any) {
+      if (error?.message?.includes("RESOURCE_EXHAUSTED") || error?.message?.includes("Quota")) {
+        isQuotaExceeded = true;
+        lastQuotaExceededTime = Date.now();
+      } else {
+        console.warn("Notice syncing from Firestore:", error?.message || error);
+      }
     }
+  }
+
+  function studentMapSet(map: Map<string, any>, item: any) {
+    if (item && item.id) map.set(item.id, item);
   }
 
   try {
@@ -287,6 +308,11 @@ async function startServer() {
   syncFromFirestore().catch(err => {
     console.error("Error during initial Firestore sync:", err);
   });
+
+  // Periodic background sync from Firestore every 15 seconds to ensure any direct student submission is synced
+  setInterval(() => {
+    syncFromFirestore().catch(e => console.warn("Periodic Firestore sync notice:", e));
+  }, 15000);
 
   async function saveDb() {
     try {
@@ -530,10 +556,14 @@ async function startServer() {
   app.post("/api/gemini/slides", async (req, res) => {
     try {
       const { topic, gradeLevel, slideCount, curricularUnit, specificTopics } = req.body;
-      if (!topic || !gradeLevel || !slideCount) {
-        return res.status(400).json({ error: "Parâmetros insuficientes" });
+      if (!topic) {
+        return res.status(400).json({ error: "O tema principal é obrigatório" });
       }
-      const result = await generateSlideDeck(topic, gradeLevel, slideCount, curricularUnit, specificTopics);
+      const count = Number(slideCount) || 5;
+      const grade = gradeLevel || "Ensino Médio";
+      const unit = curricularUnit || "Geral";
+      const topics = specificTopics || "";
+      const result = await generateSlideDeck(topic, grade, count, unit, topics);
       res.json(result);
     } catch (error: any) {
       console.error("Error in generateSlideDeck:", error);
@@ -643,6 +673,26 @@ async function startServer() {
     res.json(submission);
   });
 
+  app.post("/api/submissions/delete", async (req, res) => {
+    const { id } = req.body;
+    db.submissions = db.submissions.filter(s => s.id !== id);
+    try {
+      await fs.unlink(path.join(UPLOADS_DIR, `sub_${id}.dat`));
+    } catch (e) {}
+    await saveDb();
+
+    if (dbFirestore && id) {
+      try {
+        await deleteDoc(doc(dbFirestore, "submissions", id));
+        await deleteDoc(doc(dbFirestore, "files", `sub_${id}`));
+        console.log(`Deleted submission ${id} from Firestore.`);
+      } catch (e) {
+        console.error(`Error deleting submission ${id} from Firestore:`, e);
+      }
+    }
+    res.json({ success: true });
+  });
+
   app.post("/api/custom-link", async (req, res) => {
     const { link } = req.body;
     db.customRegistrationLink = link || "";
@@ -672,7 +722,7 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*all", (req, res) => {
+    app.use((req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
@@ -682,4 +732,6 @@ async function startServer() {
   });
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error("Fatal error starting server:", err);
+});

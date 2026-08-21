@@ -11,7 +11,14 @@ const ai = new Proxy({} as any, {
       if (!apiKey) {
         throw new Error("GEMINI_API_KEY environment variable is required");
       }
-      cachedAi = new GoogleGenAI({ apiKey });
+      cachedAi = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
+      });
     }
     return Reflect.get(cachedAi, prop, receiver);
   }
@@ -20,7 +27,7 @@ const ai = new Proxy({} as any, {
 export const researchTopic = async (query: string) => {
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.7-flash",
       contents: query,
       config: {
         tools: [{ googleSearch: {} }],
@@ -77,7 +84,7 @@ export const chatWithPedagogicalSupport = async (message: string, history: ChatM
          Seja parceira, incentive a inovação e o uso da Indústria 4.0.`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.7-flash",
       contents: prompt,
       config: {
         thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
@@ -173,12 +180,12 @@ export const generateExam = async (topic: string, gradeLevel: string, questionCo
     }
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.7-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: schema,
-        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
       }
     });
 
@@ -282,12 +289,12 @@ export const generateExercises = async (topic: string, gradeLevel: string, count
     };
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.7-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: schema,
-        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
       }
     });
 
@@ -355,12 +362,12 @@ export const generateLessonPlan = async (topic: string, gradeLevel: string, dura
     };
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.7-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: schema,
-        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
       }
     });
 
@@ -378,13 +385,13 @@ export const generateLessonPlan = async (topic: string, gradeLevel: string, dura
 export const generateSlideDeck = async (topic: string, gradeLevel: string, slideCount: number, curricularUnit: string, specificTopics: string): Promise<SlideDeck> => {
   try {
     const prompt = `Crie uma apresentação de slides educacional EXPLICATIVA, DETALHADA e APROFUNDADA.
-    Unidade Curricular: "${curricularUnit}"
+    Unidade Curricular: "${curricularUnit || 'Geral'}"
     Tema Principal: "${topic}"
     Público Alvo: "${gradeLevel}"
     Número Aproximado de Slides: ${slideCount}
 
     TÓPICOS ESPECÍFICOS OBRIGATÓRIOS (Use estes tópicos para criar o conteúdo):
-    ${specificTopics}
+    ${specificTopics || 'Estruture com introdução, conceitos principais, exemplos práticos e conclusões.'}
     
     DIRETRIZES CRUCIAIS PARA MAIOR CONTEÚDO:
     1. NÃO FAÇA APENAS LISTAS CURTAS. Você deve EXPLICAR o conteúdo de forma pedagógica.
@@ -420,12 +427,12 @@ export const generateSlideDeck = async (topic: string, gradeLevel: string, slide
     };
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.7-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: schema,
-        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
       }
     });
 
@@ -477,7 +484,7 @@ export const generateStudentReportAI = async (student: StudentReportInput) => {
     `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.7-flash",
       contents: prompt,
       config: {
         thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },

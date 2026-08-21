@@ -860,7 +860,7 @@ function App() {
   const handleAddActivity = async (activity: Activity) => {
     const activityWithTeacher = { ...activity, teacherId: activity.teacherId || currentTeacher?.id };
     setActivities(prev => [activityWithTeacher, ...prev]);
-    syncActivityToFirestore(activityWithTeacher);
+    await syncActivityToFirestore(activityWithTeacher);
     try {
       await fetch('/api/activities', {
         method: 'POST',
@@ -888,7 +888,7 @@ function App() {
   const handleAddSubmission = async (submission: Submission) => {
     const subWithTeacher = { ...submission, teacherId: submission.teacherId || currentTeacher?.id };
     setSubmissions(prev => [subWithTeacher, ...prev]);
-    syncSubmissionToFirestore(subWithTeacher);
+    await syncSubmissionToFirestore(subWithTeacher);
     try {
        await fetch('/api/submissions', {
          method: 'POST',
@@ -897,6 +897,19 @@ function App() {
        });
     } catch (e) {
        console.error(e);
+    }
+  };
+
+  const handleDeleteSubmission = async (id: string) => {
+    setSubmissions(prev => prev.filter(s => s.id !== id));
+    try {
+      await fetch('/api/submissions/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -966,7 +979,7 @@ function App() {
           onUpdateCustomLink={handleUpdateCustomLink}
         />
       );
-      case ViewState.ACTIVITIES: return <ActivitiesView activities={activities} submissions={submissions} onAddActivity={handleAddActivity} onDeleteActivity={handleDeleteActivity} students={students} />;
+      case ViewState.ACTIVITIES: return <ActivitiesView activities={activities} submissions={submissions} onAddActivity={handleAddActivity} onDeleteActivity={handleDeleteActivity} onDeleteSubmission={handleDeleteSubmission} students={students} />;
       case ViewState.WHATSAPP: return <WhatsAppView students={students} activities={activities} />;
       default: return (
         <DashboardView 

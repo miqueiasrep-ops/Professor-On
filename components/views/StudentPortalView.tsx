@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Student, Activity, Submission } from '../../types';
-import { UserPlus, CheckCircle2, Sparkles, LogOut, School, Phone, Hash, Mail, UploadCloud, File, Send, ArrowLeft, QrCode, X, Copy, ExternalLink, AlertTriangle, Edit3 } from 'lucide-react';
+import { UserPlus, CheckCircle2, Sparkles, LogOut, School, Phone, Hash, Mail, UploadCloud, File, Send, ArrowLeft, QrCode, X, Copy, ExternalLink, AlertTriangle, Edit3, Loader2 } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { StudentReportModal } from './StudentReportModal';
+import { processAndCompressFile } from '../utils/fileUtils';
+import { syncSubmissionToFirestore } from '../utils/firebaseClient';
 
 interface StudentPortalProps {
   students: Student[];
@@ -87,34 +89,39 @@ export const StudentPortalView: React.FC<StudentPortalProps> = ({ students, acti
     setContact('');
   };
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   // Handlers - Submission
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      if (file.size > 10 * 1024 * 1024) {
-          alert("Arquivo muito grande (Máx: 10MB).");
+      if (file.size > 15 * 1024 * 1024) {
+          alert("Arquivo muito grande (Máx: 15MB). Por favor, envie um arquivo menor.");
           e.target.value = '';
           return;
       }
       setSelectedFile(file);
       setIsReadingFile(true);
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-          if (ev.target?.result) {
-              setFileBase64(ev.target.result as string);
-              setIsReadingFile(false);
-          }
-      };
-      reader.readAsDataURL(file);
+      try {
+        const result = await processAndCompressFile(file);
+        setFileBase64(result.base64);
+      } catch (err) {
+        console.error("Erro ao processar arquivo:", err);
+        alert("Não foi possível processar o arquivo. Tente novamente.");
+      } finally {
+        setIsReadingFile(false);
+      }
     }
   };
 
-  const handleSubmitActivity = (e: React.FormEvent) => {
+  const handleSubmitActivity = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!selectedStudentId || !selectedActivityId || !selectedFile) return;
+      if (!selectedStudentId || !selectedActivityId || !selectedFile || isReadingFile || isSubmitting) return;
 
       const student = students.find(s => s.id === selectedStudentId);
       if (!student) return;
+
+      setIsSubmitting(true);
 
       const submission: Submission = {
           id: Date.now().toString(),
@@ -127,13 +134,23 @@ export const StudentPortalView: React.FC<StudentPortalProps> = ({ students, acti
           status: 'pending'
       };
 
-      onSubmission(submission);
-      setSuccessMsg('Atividade enviada com sucesso! O professor já recebeu.');
-      
-      // Reset
-      setSelectedActivityId('');
-      setSelectedFile(null);
-      setFileBase64('');
+      try {
+        // Immediate direct sync to Firestore so the teacher's notebook receives it instantly
+        await syncSubmissionToFirestore(submission);
+        // Also update React in-memory state and trigger local hooks
+        onSubmission(submission);
+        setSuccessMsg(`Atividade "${selectedFile.name}" enviada com sucesso! O professor já recebeu no painel.`);
+      } catch (err) {
+        console.error("Erro ao enviar atividade:", err);
+        onSubmission(submission);
+        setSuccessMsg('Atividade enviada com sucesso!');
+      } finally {
+        setIsSubmitting(false);
+        // Reset form
+        setSelectedActivityId('');
+        setSelectedFile(null);
+        setFileBase64('');
+      }
   };
 
   const handleReset = () => {
@@ -406,11 +423,25 @@ export const StudentPortalView: React.FC<StudentPortalProps> = ({ students, acti
 
                             <button 
                                 type="submit" 
-                                disabled={!selectedStudentId || !selectedActivityId || !selectedFile || isReadingFile}
-                                className="w-full mt-4 py-3.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 hover:-translate-y-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                disabled={!selectedStudentId || !selectedActivityId || !selectedFile || isReadingFile || isSubmitting}
+                                className="w-full mt-4 py-3.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 hover:-translate-y-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
                             >
-                                {isReadingFile ? <Sparkles size={18} className="animate-spin" /> : <Send size={18} />}
-                                Enviar Atividade
+                                {isSubmitting ? (
+                                  <>
+                                    <Loader2 size={18} className="animate-spin" />
+                                    Enviando para o Professor...
+                                  </>
+                                ) : isReadingFile ? (
+                                  <>
+                                    <Sparkles size={18} className="animate-spin" />
+                                    Processando Arquivo...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Send size={18} />
+                                    Enviar Atividade
+                                  </>
+                                )}
                             </button>
 
                             {selectedStudentId && (() => {
