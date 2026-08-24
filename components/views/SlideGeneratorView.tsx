@@ -73,7 +73,13 @@ export const SlideGeneratorView: React.FC<SlideGeneratorViewProps> = ({ archived
       const response = await fetch('/api/gemini/slides', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic, gradeLevel, slideCount, curricularUnit, specificTopics })
+        body: JSON.stringify({ 
+          topic: topic.trim(), 
+          gradeLevel, 
+          slideCount, 
+          curricularUnit: curricularUnit.trim() || 'Geral', 
+          specificTopics: specificTopics.trim() 
+        })
       });
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
@@ -297,21 +303,20 @@ export const SlideGeneratorView: React.FC<SlideGeneratorViewProps> = ({ archived
         <form onSubmit={handleGenerate} className="space-y-5 flex-1">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-              <Book size={14} /> Unidade Curricular
+              <Book size={14} /> Unidade Curricular (Opcional)
             </label>
             <input
               type="text"
-              required
               value={curricularUnit}
               onChange={(e) => setCurricularUnit(e.target.value)}
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-              placeholder="Ex: Biologia, Mecânica, História..."
+              placeholder="Ex: Geral, Biologia, Mecânica, História..."
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Tema Principal
+              Tema Principal *
             </label>
             <input
               type="text"
@@ -319,7 +324,7 @@ export const SlideGeneratorView: React.FC<SlideGeneratorViewProps> = ({ archived
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-              placeholder="Ex: Sistema Solar"
+              placeholder="Ex: Sistema Solar, Termodinâmica, Liderança..."
             />
           </div>
 
@@ -369,8 +374,8 @@ export const SlideGeneratorView: React.FC<SlideGeneratorViewProps> = ({ archived
 
           <button
             type="submit"
-            disabled={isGenerating || !topic || !curricularUnit}
-            className="w-full py-3 px-4 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 mt-4"
+            disabled={isGenerating || !topic.trim()}
+            className="w-full py-3 px-4 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 mt-4 cursor-pointer"
           >
             {isGenerating ? (
               <>
